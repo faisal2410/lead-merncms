@@ -15,7 +15,10 @@ exports.isAdmin = async (req, res, next) => {
       next();
     }
   } catch (err) {
-    console.log(err);
+    res.status(403).json({
+      status:"Fail",
+      message:err.message
+    })
   }
 };
 
@@ -54,6 +57,27 @@ exports.isEnrolled = async (req, res, next) => {
     }
   } catch (err) {
     console.log(err);
+  }
+};
+
+exports.isAuthor = async (req, res, next) => {
+  // console.log(req.user.role)
+  try {
+    const user = await findUserByRole({role:req.user.role});  
+    // console.log(user)
+    if (!user.role.includes("author")) {
+      return res.status(403).json({
+        status:"Fail",
+        message:"Access Denied. Author Resource"
+      });
+    } else {
+      next();
+    }
+  } catch (err) {
+    res.status(403).json({
+      status:"Fail",
+      message:err.message
+    })
   }
 };
 

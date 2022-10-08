@@ -61,6 +61,11 @@ const userSchema = new Schema(
       enum: ["subscriber","author","admin"],
       default: "subscriber",
     },
+    status: {
+      type: String,
+      default: "inactive",
+      enum: ["active", "inactive", "blocked"],
+    },
     image: { type: ObjectId, ref: "Media" },
     website: {
       type: String,

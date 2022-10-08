@@ -1,5 +1,9 @@
 const { signupService, findUserByEmail,findUserById,forgotPassword,resetPassword } = require("../services/auth");
 const { generateToken } = require("../helpers/auth");
+const User=require("../models/user");
+// sendgrid
+const sgMail = require("@sendgrid/mail");
+sgMail.setApiKey(process.env.SENDGRID_KEY);
 
 
 exports.register = async (req, res) => {
@@ -14,11 +18,10 @@ exports.register = async (req, res) => {
       status: "success",
       message: "Successfully signed up",
     });
-  } catch (error) {
-    console.log(error);
+  } catch (error) {   
     res.status(500).json({
       status: "fail",
-      error,
+      message:error.message
     });
   }
 };
@@ -93,16 +96,22 @@ exports.login = async (req, res) => {
 exports.logout = async (req, res) => {
   try {
     res.clearCookie("token");
-    return res.json({ message: "Signout success" });
+    return res.status(200).json({
+      status:"success",
+      message: "Signout success"
+     });
   } catch (err) {
-    console.log(err);
+   res.status(400).json({
+    status:"Fail",
+    message:err.message
+   })
   }
 };
 
 exports.currentUser = async (req, res) => {
   try {
-    const user = await findUserById(req.user._id)
-    console.log("CURRENT_USER", user);
+    const user = await findUserByEmail(req.user.email)
+    // console.log("CURRENT_USER", user);
     return res.json({ ok: true });
   } catch (err) {
     console.log(err);
@@ -169,5 +178,33 @@ exports.resetPassword = async (req, res) => {
   } catch (err) {
     console.log(err);
     return res.status(400).send("Error! Try again.");
+  }
+};
+
+
+exports.createUser = async (req, res) => {
+  try {
+    const { firstName,lastName, email,password,confirmPassword, role, website } = req.body;
+ // if user exist
+ const exist = await User.findOne({ email });
+ if (exist) {
+   return res.json({ error: "Email is taken" });
+ }
+    const user = await new User({
+      firstName,
+      lastName,
+      email,
+      password,
+      confirmPassword,
+      role,
+      website,
+    }).save();
+    return res.status(200).json(user);
+  
+  } catch (err) {
+    res.status(400).json({
+      status:"Fail",
+      message:err.message
+    })
   }
 };
