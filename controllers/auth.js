@@ -1,6 +1,9 @@
 const { signupService, findUserByEmail,findUserById,forgotPassword,resetPassword } = require("../services/auth");
-const { generateToken } = require("../helpers/auth");
+const { generateToken,hashPassword,comparePassword } = require("../helpers/auth");
 const User=require("../models/user");
+const nanoid = require("nanoid");
+const validator = require("validator");
+
 // sendgrid
 const sgMail = require("@sendgrid/mail");
 sgMail.setApiKey(process.env.SENDGRID_KEY);
@@ -110,7 +113,7 @@ exports.logout = async (req, res) => {
 
 exports.currentUser = async (req, res) => {
   try {
-    const user = await findUserByEmail(req.user.email)
+    const user = await findUserById(req.auth._id)
     // console.log("CURRENT_USER", user);
     return res.json({ ok: true });
   } catch (err) {
@@ -119,65 +122,60 @@ exports.currentUser = async (req, res) => {
 };
 
 exports.forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  // find user by email
+  const user = await User.findOne({ email });
+  console.log("USER ===> ", user);
+  if (!user) {
+    return res.json({ error: "User not found" });
+  }
+  // generate code
+  const resetCode = nanoid(5).toUpperCase();
+  // const resetCode = nanoid();
+  // save to db
+  user.resetCode = resetCode;
+   user.save({ validateBeforeSave: false });
+  // prepare email
+  const emailData = {
+    from: process.env.EMAIL_FROM,
+    to: user.email,
+    subject: "Password reset code",
+    html: `<h1>Your password  reset code is: ${resetCode}</h1>`,
+  };
+  // send email
   try {
-    const { email } = req.body;
-    // console.log(email);
-    const shortCode = uid(6).toUpperCase();
-    const user = await forgotPassword(email,shortCode)
-    if (!user) return res.status(400).send("User not found");
-
-    // prepare for email
-    const params = {
-      Source: process.env.EMAIL_FROM,
-      Destination: {
-        ToAddresses: [email],
-      },
-      Message: {
-        Body: {
-          Html: {
-            Charset: "UTF-8",
-            Data: `
-                <html>
-                  <h1>Reset password</h1>
-                  <p>User this code to reset your password</p>
-                  <h2 style="color:red;">${shortCode}</h2>
-                  <i>leadmerncms.com</i>
-                </html>
-              `,
-          },
-        },
-        Subject: {
-          Charset: "UTF-8",
-          Data: "Reset Password",
-        },
-      },
-    };
-
-    const emailSent = SES.sendEmail(params).promise();
-    emailSent
-      .then((data) => {
-        console.log(data);
-        res.json({ ok: true });
-      })
-      .catch((err) => {
-        console.log(err);
-      });
+    const data = await sgMail.send(emailData);
+    console.log(data);
+    res.json({ ok: true });
   } catch (err) {
     console.log(err);
+    res.json({ ok: false });
   }
 };
 
 exports.resetPassword = async (req, res) => {
   try {
-    const { email, code, newPassword } = req.body;
-    // console.table({ email, code, newPassword });
-    // const hashedPassword = await hashPassword(newPassword);
-
-    const user = await resetPassword(email,code,newPassword)
-    res.json({ ok: true });
+    const { email, password, resetCode } = req.body;
+    // find user based on email and resetCode
+    const user = await User.findOne({ email, resetCode });
+    // if user not found
+    if (!user) {
+      return res.json({ error: "Email or reset code is invalid" });
+    }
+    // if password is short
+    // if (!password || password.length < 6) {
+    //   return res.json({
+    //     error: "Password is required and should be 6 characters long",
+    //   });
+    // }
+    // // hash password
+    // const hashedPassword = await hashPassword(password);
+    // user.password = hashedPassword;
+    user.resetCode = "";
+    user.save({ validateBeforeSave: false });
+    return res.json({ ok: true });
   } catch (err) {
     console.log(err);
-    return res.status(400).send("Error! Try again.");
   }
 };
 
@@ -206,5 +204,140 @@ exports.createUser = async (req, res) => {
       status:"Fail",
       message:err.message
     })
+  }
+};
+
+exports.users = async (req, res) => {
+  try {
+    const all = await User.find().select("-password -confirmPassword -resetCode");
+    res.json(all);
+  } catch (err) {
+    console.log(err);
+  }
+};
+
+exports.deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (userId === req.auth._id) return;
+    const user = await User.findByIdAndDelete(userId);
+    res.json(user);
+  } catch (err) {
+    console.log(err);
+  }
+};
+
+exports.currentUserProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId).populate("image");
+    res.json(user);
+  } catch (err) {
+    console.log(err);
+  }
+};
+
+exports.updateUserByAdmin = async (req, res) => {
+  try {
+    const { id, firstName,lastName, email, password,confirmPassword, website, role, image } = req.body;
+
+    const userFromDb = await User.findById(id);
+    // check valid email
+    if (!validator.isEmail(email)) {
+      return res.json({ error: "Invalid email" });
+    }
+    // check if email is taken
+    const exist = await User.findOne({ email });
+    if (exist && exist._id.toString() !== userFromDb._id.toString()) {
+      return res.json({ error: "Email is taken" });
+    }
+    // check password strength
+   
+    if(!validator.isStrongPassword(password, {
+      minLength: 6,
+      minLowercase: 3,
+      minNumbers: 1,
+      minUppercase: 1,
+      minSymbols: 1,
+    })){
+      return res.json({
+        error: "Password is not strong enough.",
+      });
+    }
+     const hashedPassword = password ? await hashPassword(password) : undefined;
+     const hashedConfirmPassword=confirmPassword?await hashPassword(confirmPassword):undefined
+    const updated = await User.findByIdAndUpdate(
+      id,
+      {
+        firstName: firstName || userFromDb.firstName,
+        lastName: lastName || userFromDb.lastName,
+        email: email || userFromDb.email,
+        password:hashedPassword || userFromDb.password,
+        confirmPassword:hashedConfirmPassword||userFromDb.confirmPassword,
+        website: website || userFromDb.website,
+        role: role || userFromDb.role,
+        image: image || userFromDb.image,
+      },
+      { new: true }
+    ).populate("image");
+
+    res.json(updated);
+  } catch (err) {
+    console.log(err);
+  }
+};
+
+exports.updateUserByUser = async (req, res) => {
+  try {
+    const { id, firstName,lastName, email, password,confirmPassword, website, role, image } = req.body;
+
+    const userFromDb = await User.findById(id);
+
+    // check if user is himself/herself
+    if (userFromDb._id.toString() !== req.auth._id.toString()) {
+      return res.status(403).send("You are not allowed to update this user");
+    }
+
+    // check valid email
+    if (!validator.isEmail(email)) {
+      return res.json({ error: "Invalid email" });
+    }
+    // check if email is taken
+    const exist = await User.findOne({ email });
+    if (exist && exist._id.toString() !== userFromDb._id.toString()) {
+      return res.json({ error: "Email is taken" });
+    }
+    // check password length
+    if(!validator.isStrongPassword(password, {
+      minLength: 6,
+      minLowercase: 3,
+      minNumbers: 1,
+      minUppercase: 1,
+      minSymbols: 1,
+    })){
+      return res.json({
+        error: "Password is not strong enough.",
+      });
+    }
+
+    const hashedPassword = password ? await hashPassword(password) : undefined;
+    const hashedConfirmPassword=confirmPassword?await hashPassword(confirmPassword):undefined
+    const updated = await User.findByIdAndUpdate(
+      id,
+      {
+        firstName: firstName || userFromDb.firstName,
+        lastName: lastName || userFromDb.lastName,
+        email: email || userFromDb.email,
+        password:hashedPassword || userFromDb.password,
+        confirmPassword:hashedConfirmPassword||userFromDb.confirmPassword,
+        website: website || userFromDb.website,
+        // role: role || userFromDb.role,
+        image: image || userFromDb.image,
+      },
+      { new: true }
+    ).populate("image");
+
+    res.json(updated);
+  } catch (err) {
+    console.log(err);
   }
 };

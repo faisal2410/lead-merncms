@@ -3,7 +3,7 @@ const express =require("express");
 const router = express.Router();
 
 // middlewares
-const { requireSignin, isAdmin } =require("../middlewares");
+const { requireSignin, isAdmin } =require("../middlewares/auth");
 // controller
 const { contact, createPage, getPage } =require("../controllers/website");
 

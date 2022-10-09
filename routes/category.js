@@ -2,7 +2,7 @@ const express =require("express");
 const router = express.Router();
 
 // middleware
-const { requireSignin, isAdmin } =require("../middlewares");
+const { requireSignin, isAdmin } =require("../middlewares/auth");
 // controllers
 const {
   create,

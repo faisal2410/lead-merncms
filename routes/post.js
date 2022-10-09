@@ -10,7 +10,7 @@ const {
   canUpdateDeletePost,
   canDeleteMedia,
   canUpdateDeleteComment,
-} =require("../middlewares");
+} =require("../middlewares/auth");
 // controllers
 const {
   uploadImage,

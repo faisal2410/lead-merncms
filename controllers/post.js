@@ -51,11 +51,11 @@ exports.createPost = async (req, res) => {
           ...req.body,
           slug: slugify(title),
           categories: ids,
-          postedBy: req.user._id,
+          postedBy: req.auth._id,
         }).save();
 
         // push the post _id to user's posts []
-        await User.findByIdAndUpdate(req.user._id, {
+        await User.findByIdAndUpdate(req.auth._id, {
           $addToSet: { posts: post._id },
         });
 

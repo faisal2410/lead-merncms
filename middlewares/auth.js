@@ -1,36 +1,156 @@
-const jwt = require("jsonwebtoken");
-const { promisify } = require("util");
-/**
- * 1. check if token exists
- * 2. if not token send res
- * 3. decode the token
- * 4. if valid next
- */
+const User =require("../models/user");
+const Post =require("../models/post");
+const Media =require("../models/media");
+const Comment =require("../models/comment");
+const {expressjwt} =require("express-jwt");
+require("dotenv").config();
 
-exports.verifyToken = async (req, res, next) => {
+// req.user = _id
+exports.requireSignin = expressjwt({
+  secret: process.env.JWT_SECRET,
+  algorithms: ["HS256"],
+});
+
+
+exports.isAdmin = async (req, res, next) => {
+  console.log(req.auth)
   try {
-    const token = req.headers?.authorization?.split(" ")?.[1];
-
-    if(!token){
-      return res.status(401).json({
-        status: "fail",
-        error: "You are not logged in"
+    const user = await User.findById(req.auth._id);
+    if (user.role !== "admin") {
+      return res.status(403).json({
+        status:"Fail",
+        message:"Unauthorized.Admin resource"
       });
+    } else {
+      next();
     }
-    const decoded = await promisify(jwt.verify)(token, process.env.TOKEN_SECRET);
+  } catch (err) {
+    console.log(err);
+  }
+};
 
-    // const user = User.findOne({ email: decoded.email })
-    console.log(decoded)
+exports.isAuthor = async (req, res, next) => {
+  console.log(req.auth)
+  try {
+    const user = await User.findById(req.auth._id);
+    if (user.role !== "author") {
+      return res.status(403).json({
+        status:"Fail",
+        message:"Unauthorized! Author resource"});
+    } else {
+      next();
+    }
+  } catch (err) {
+    console.log(err);
+  }
+};
 
-    req.user = decoded;
+exports.canCreateRead = async (req, res, next) => {
+  console.log(req.auth)
+  try {
+    const user = await User.findById(req.auth._id);
+    switch (user.role) {
+      case "admin":
+        next();
+        break;
+      case "author":
+        next();
+        break;
+      default:
+        return res.status(403).json({
+          status:"Fail",
+          message:"Unauthorized"
+        });
+    }
+  } catch (err) {
+    console.log(err);
+  }
+};
 
-    next();
+exports.canUpdateDeletePost = async (req, res, next) => {
+  console.log(req.auth)
+  try {
+    const user = await User.findById(req.auth._id);
+    const post = await Post.findById(req.params.postId);
+    switch (user.role) {
+      case "admin":
+        next();
+        break;
+      case "author":
+        if (post.postedBy.toString() !== user._id.toString()) {
+          return res.status(403).json({
+            status:"Fail",
+            message:"Unauthorized"
+          });
+        } else {
+          next();
+        }
+        break;
+      default:
+        return res.status(403).json({
+          status:"Fail",
+          message:"Unauthorized"
+        });
+    }
+  } catch (err) {
+    console.log(err);
+  }
+};
 
+exports.canDeleteMedia = async (req, res, next) => {
+  console.log(req.auth)
+  try {
+    const user = await User.findById(req.auth._id);
+    const media = await Media.findById(req.params.id);
+    switch (user.role) {
+      case "admin":
+        next();
+        break;
+      case "author":
+        if (media.postedBy.toString() !== req.user._id.toString()) {
+          return res.status(403).json({
+            status:"Fail",
+            message:"Unauthorized"
+          });
+        } else {
+          next();
+        }
+        break;
+    }
+  } catch (err) {
+    console.log(err);
+  }
+};
 
-  } catch (error) {
-    res.status(403).json({
-      status: "fail",
-      error: "Invalid token"
-    });
+exports.canUpdateDeleteComment = async (req, res, next) => {
+  console.log(req.auth)
+  try {
+    const { commentId } = req.params;
+    const comment = await Comment.findById(commentId);
+
+    const user = await User.findById(req.auth._id);
+
+    switch (user.role) {
+      case "admin":
+        next();
+        break;
+      case "author":
+        if (comment.postedBy.toString() === req.user._id.toString()) {
+          next();
+        }
+        break;
+      case "subscriber":
+        if (comment.postedBy.toString() === req.user._id.toString()) {
+          next();
+        }
+        break;
+      default:
+        return res.status(403).json({
+          status:"Fail",
+          message:"Unauthorized"
+        });
+    }
+  } catch (err) {
+    console.log(err);
   }
 };
