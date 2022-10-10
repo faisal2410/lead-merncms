@@ -10,7 +10,8 @@ exports.contact = async (req, res) => {
     // prepare email
     const emailData = {
       from: process.env.EMAIL_FROM,
-      to: process.env.EMAIL_FROM,
+      // to: process.env.EMAIL_FROM,
+      to: email,
       subject: "Email received from contact form",
       html: `
       <h3>Contact form message</h3>

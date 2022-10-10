@@ -1,5 +1,4 @@
 const express =require("express");
-// const formidable =require("express-formidable");
 const router = express.Router();
 
 // middleware
@@ -36,8 +35,7 @@ const {
 
 router.post("/upload-image", requireSignin, canCreateRead, uploadImage);
 router.post(
-  "/upload-image-file",
-  // formidable(),
+  "/upload-image-file", 
   requireSignin,
   canCreateRead,
   uploadImageFile

@@ -1,28 +1,132 @@
+const multer = require('multer');
 const Post =require("../models/post");
 const User =require("../models/user");
 const Category =require("../models/category");
 const Media =require("../models/media");
 const Comment =require("../models/comment");
 const slugify =require("slugify");
-// const cloudinary =require("cloudinary");
 
-// cloudinary.config({
-//   cloud_name: process.env.CLOUDINARY_NAME,
-//   api_key: process.env.CLOUDINARY_KEY,
-//   api_secret: process.env.CLOUDINARY_SECRET,
-// });
 
 exports.uploadImage = async (req, res) => {
   try {
-    // console.log(req.body);
-    const result = await cloudinary.uploader.upload(req.body.image);
-    // console.log(result);
-    res.json(result.secure_url);
+    const storage=multer.diskStorage({
+      destination: (req,file,callBack)=> {
+          callBack(null,'public/media');
+      },
+      filename: (req,file,callBack)=> {
+          callBack(null,file.originalname)
+      }    
+      
+  });
+  const maxSize = 5 * 1024 * 1024; // for 5MB  
+  const upload=multer({
+    storage:storage,
+    fileFilter: (req, file, cb)=> {
+      if(file.mimetype==="image/jpg"||
+        file.mimetype==="image/png"||
+        file.mimetype==="image/jpeg"||
+        file.mimetype==="image/webp"      
+      ){
+        cb(null, true)
+      }else{
+        cb(null, false);
+        return cb(new Error("Only jpg, png, jpeg and webp format is allowed"))
+      }
+    },
+    limits: { fileSize: maxSize }
+  }).array('photos', 12)
+  
+   
+    upload(req,res, (error)=> {  
+      if (error instanceof multer.MulterError) {        
+        res.status(400).json({
+          status:"Fail",
+          message:error.message
+        })
+      } else if (error) {      
+        res.status(400).json({
+          status:"Fail",
+          message:error.message
+        })
+      }    
+      else{
+          res.status(200).json({
+            status:"Success",
+            message:"File upload Success"
+          })
+      }
+});
   } catch (err) {
-    console.log(err);
+    res.status(400).json({
+      status:"Fail",
+      message:err.message
+    })
   }
 };
+exports.uploadImageFile = async (req, res) => {
+  try {
+    const storage=multer.diskStorage({
+      destination: (req,file,callBack)=> {
+          callBack(null,'public/media');
+      },
+      filename: (req,file,callBack)=> {
+          callBack(null,file.originalname)
+      }    
+      
+  });
+  const maxSize = 1 * 1024 * 1024; // for 1MB  
+  const upload=multer({
+    storage:storage,
+    fileFilter: (req, file, cb)=> {
+      if(file.mimetype==="image/jpg"||
+        file.mimetype==="image/png"||
+        file.mimetype==="image/jpeg"||
+        file.mimetype==="image/webp"      
+      ){
+        cb(null, true)
+      }else{
+        cb(null, false);
+        return cb(new Error("Only jpg, png, jpeg and webp format is allowed"))
+      }
+    },
+    limits: { fileSize: maxSize }
+  }).array('photos', 12)
+  
+   
+    upload(req,res, async(error)=> {  
+      console.log("file path test",req.files)
+      if (error instanceof multer.MulterError) {        
+        res.status(400).json({
+          status:"Fail",
+          message:error.message
+        })
+      } else if (error) {      
+        res.status(400).json({
+          status:"Fail",
+          message:error.message
+        })
+      }    
+      else{
 
+//নোট: কিভাবে মাল্টিপল ফাইল পাথ ইউআরএল এর মধ্যে রাখা যায় ফর লুপ চালিয়ে সেটা দেখতে হবে, যাতে যেকোন সংখ্যক ইমেজ আপলোড করা যায় (লাইন নং 113)
+        const media =await new Media({
+              url: [req.files[0].path,req.files[1].path] ,            
+              postedBy: req.auth._id,
+            }).save();
+          res.status(200).json({
+            status:"Success",
+            message:"File upload Success",
+            media:media
+          })
+      }
+});
+  } catch (err) {
+    res.status(400).json({
+      status:"Fail",
+      message:err.message
+    })
+  }
+};
 exports.createPost = async (req, res) => {
   try {
     // console.log(req.body);
@@ -100,21 +204,21 @@ exports.posts = async (req, res) => {
   }
 };
 
-exports.uploadImageFile = async (req, res) => {
-  try {
-    // console.log(req.files);
-    const result = await cloudinary.uploader.upload(req.files.file.path);
-    // save to db
-    const media = await new Media({
-      url: result.secure_url,
-      public_id: result.public_id,
-      postedBy: req.user._id,
-    }).save();
-    res.json(media);
-  } catch (err) {
-    console.log(err);
-  }
-};
+// exports.uploadImageFile = async (req, res) => {
+//   try {
+//     // console.log(req.files);
+//     const result = await cloudinary.uploader.upload(req.files.file.path);
+//     // save to db
+//     const media = await new Media({
+//       url: result.secure_url,
+//       public_id: result.public_id,
+//       postedBy: req.user._id,
+//     }).save();
+//     res.json(media);
+//   } catch (err) {
+//     console.log(err);
+//   }
+// };
 
 exports.media = async (req, res) => {
   try {
@@ -205,7 +309,7 @@ exports.editPost = async (req, res) => {
 
 exports.postsByAuthor = async (req, res) => {
   try {
-    const posts = await Post.find({ postedBy: req.user._id })
+    const posts = await Post.find({ postedBy: req.auth._id })
       .populate("postedBy", "name")
       .populate("categories", "name slug")
       .populate("featuredImage", "url")
@@ -240,7 +344,7 @@ exports.createComment = async (req, res) => {
     const { comment } = req.body;
     let newComment = await new Comment({
       content: comment,
-      postedBy: req.user._id,
+      postedBy: req.auth._id,
       postId,
     }).save();
     newComment = await newComment.populate("postedBy", "name");
@@ -270,7 +374,7 @@ exports.comments = async (req, res) => {
 
 exports.userComments = async (req, res) => {
   try {
-    const comments = await Comment.find({ postedBy: req.user._id })
+    const comments = await Comment.find({ postedBy: req.auth._id })
       .populate("postedBy", "name")
       .populate("postId", "title slug")
       .sort({ createdAt: -1 });
